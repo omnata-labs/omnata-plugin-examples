@@ -1,0 +1,6 @@
+**/.packages
+requirements.other.txt
+requirements.snowflake.txt
+setup_script.sql
+app.zip
+__pycache__
