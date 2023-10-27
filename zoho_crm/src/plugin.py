@@ -1,5 +1,5 @@
 """
-Module containing the Slack plugin
+Module containing the Zoho CRM plugin
 """
 from typing import Dict, List, Tuple
 from logging import getLogger
@@ -129,7 +129,7 @@ class ZohoCrmPlugin(OmnataPlugin):
 
     def connect(self, parameters: ConnectionConfigurationParameters) -> ConnectResponse:
         """
-        Tests the connection to Slack, using the provided parameters
+        Tests the connection to Zoho CRM, using the provided parameters
         """
         (base_url,headers) = self.get_auth_details(parameters)
         response = requests.get(f"{base_url}/crm/v5/org",headers=headers)
@@ -222,14 +222,14 @@ class ZohoCrmPlugin(OmnataPlugin):
         fields_list = [
             FormDropdownField(name='module',label='Module',
                 data_source=DynamicFormOptionsDataSource(
-                    source_function=self.fetch_module_list))
+                    source_function=self.fetch_module_form_options))
         ]
         update_or_upsert = parameters.sync_strategy in [UpdateSyncStrategy(),UpsertSyncStrategy()]
         if update_or_upsert:
             fields_list.append(FormDropdownField(name='find_by',label='Unique Field',help_text="Matches existing records when updating or upserting",
                 depends_on='module',
                 data_source=DynamicFormOptionsDataSource(
-                    source_function=self.fetch_module_form_options)))
+                    source_function=self.fetch_module_fields_form_options)))
         
         return OutboundSyncConfigurationForm(
             fields=fields_list,
