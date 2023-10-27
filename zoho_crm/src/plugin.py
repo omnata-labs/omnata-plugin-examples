@@ -52,8 +52,8 @@ logger = getLogger(__name__)
 
 class ZohoCrmPlugin(OmnataPlugin):
     """
-    A plugin for the Zoho CRM product.
-    Uses the bulk write API to load records into Zoho modules.
+    An example plugin for the Zoho CRM product.
+    Uses the bulk read and write API to load records into Zoho modules, and extract them.
     """
 
     def get_manifest(self) -> PluginManifest:
@@ -300,9 +300,9 @@ class ZohoCrmPlugin(OmnataPlugin):
             find_by = parameters.get_sync_parameter('find_by').value
         
         # our plugin only supports insert, update and upsert so we should only ever be given Create and Update actions
-        self.record_upload(outbound_sync_request.get_records(batched=True,sync_actions=[CreateSyncAction(),UpdateSyncAction()]),
-            base_url=base_url,headers=headers,org_id=org_id,module_name=module_name,
-            sync_strategy=parameters.sync_strategy,find_by=find_by)
+        records = outbound_sync_request.get_records(batched=True,sync_actions=[CreateSyncAction(),UpdateSyncAction()])
+        self.record_upload(data_frame=records,base_url=base_url,headers=headers,org_id=org_id,
+                           module_name=module_name,sync_strategy=parameters.sync_strategy,find_by=find_by)
 
     @managed_outbound_processing(concurrency=5, batch_size=25000)
     def record_upload(self, data_frame: pandas.DataFrame, base_url:str,headers:dict,org_id:str,module_name:str,
