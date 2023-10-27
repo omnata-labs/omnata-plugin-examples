@@ -1,6 +1,9 @@
 # omnata-plugin-examples
 Public examples of plugins for Omnata Sync
 
+A walkthrough of these examples can be found at:
+https://docs.omnata.com/omnata-product-documentation/omnata-sync-for-snowflake/plugins/example-plugins
+
 ## Prerequisites
 
 1. [Omnata Sync Engine](https://app.snowflake.com/marketplace/listing/GZSUZ59IJT/omnata-omnata-sync-engine) installed in your Snowflake development environment
@@ -29,4 +32,4 @@ omnata plugin_dev register SLACK_PLUGIN_APP
 Command notes:
 - `upload` downloads pip requirements, zips up the codebase, uploads to a stage in your account and creates an application package
 - `deploy` installs the application locally from the application package
-- `register` pairs the plugin app with the Omnata Sync Engine, so that the plugin appears in the list when creating connections.
+- `register` pairs the plugin app with the Omnata Sync Engine, so that the plugin appears in the list when creating connections. You only need to do this once, subsequent code changes are covered by the `upload` and `deploy` commands.

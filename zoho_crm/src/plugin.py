@@ -438,7 +438,7 @@ class ZohoCrmPlugin(OmnataPlugin):
         """
         self.fetch_records(inbound_sync_request.streams,
                             parameters=parameters,
-                            inbound_sync_request=inbound_sync_request,)
+                            inbound_sync_request=inbound_sync_request)
 
     @managed_inbound_processing(concurrency=5)
     def fetch_records(self,
