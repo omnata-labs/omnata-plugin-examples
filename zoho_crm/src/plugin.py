@@ -43,7 +43,8 @@ from omnata_plugin_runtime.configuration import (
     OutboundSyncConfigurationParameters,
     InboundSyncConfigurationParameters,
     InboundSyncStrategy,
-    OutboundSyncStrategy
+    OutboundSyncStrategy,
+    StoredConfigurationValue
 )
 from omnata_plugin_runtime.rate_limiting import ApiLimits, too_many_requests_hook, RequestRateLimit, HttpRequestMatcher
 
@@ -105,8 +106,8 @@ class ZohoCrmPlugin(OmnataPlugin):
                 oauth_template=SecurityIntegrationTemplateAuthorizationCode(
                     oauth_client_id="<Client ID>",
                     oauth_client_secret="<Client Secret>",
-                    oauth_token_endpoint="https://<Account domain (accounts.zoho.x)>/oauth/v2/token",
-                    oauth_authorization_endpoint="https://<Account domain (accounts.zoho.x)>/oauth/v2/auth",
+                    oauth_token_endpoint="https://<Account domain (e.g. accounts.zoho.com)>/oauth/v2/token",
+                    oauth_authorization_endpoint="https://<Account domain (e.g. accounts.zoho.com)>/oauth/v2/auth",
                     oauth_allowed_scopes=["ZohoCRM.bulk.ALL",
                                           "ZohoCRM.settings.modules.READ",
                                           "ZohoCRM.settings.fields.READ",
@@ -136,7 +137,7 @@ class ZohoCrmPlugin(OmnataPlugin):
         if response.status_code != 200:
             raise ValueError(f"Error connecting to Zoho CRM: {response.text}")
         return ConnectResponse(connection_parameters={
-            "org_id": response.json()['org'][0]['zgid'],
+            "org_id": StoredConfigurationValue(value=response.json()['org'][0]['zgid'])
         })
 
     def get_auth_details(self, parameters: ConnectionConfigurationParameters) -> Tuple[str,Dict]:
