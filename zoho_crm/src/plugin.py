@@ -18,7 +18,7 @@ from omnata_plugin_runtime.forms import (
     InboundSyncConfigurationForm,
     OutboundSyncConfigurationForm,
     SyncConfigurationParameters,
-    SecurityIntegrationTemplate,
+    SecurityIntegrationTemplateAuthorizationCode,
     DynamicFormOptionsDataSource,
     StaticFormOptionsDataSource,
 )
@@ -102,7 +102,7 @@ class ZohoCrmPlugin(OmnataPlugin):
                 FormInputField(name='user_count',label='Purchased Users Count',default_value="100",help_text="Used to calculate rate limit quota",required=True),
                 FormInputField(name='addon_credits',label='Addon API credits purchased',default_value="0",help_text="Used to calculate rate limit quota",required=True)
                 ],
-                oauth_template=SecurityIntegrationTemplate(
+                oauth_template=SecurityIntegrationTemplateAuthorizationCode(
                     oauth_client_id="<Client ID>",
                     oauth_client_secret="<Client Secret>",
                     oauth_token_endpoint="https://<Account domain (accounts.zoho.x)>/oauth/v2/token",

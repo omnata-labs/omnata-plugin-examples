@@ -1,2 +1,2 @@
 requests
-omnata-plugin-runtime>=0.2.18
+omnata-plugin-runtime>=0.2.61
