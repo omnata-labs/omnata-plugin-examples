@@ -19,6 +19,7 @@ from omnata_plugin_runtime.forms import (
     OutboundSyncConfigurationForm,
     SyncConfigurationParameters,
     SecurityIntegrationTemplateAuthorizationCode,
+    SecurityIntegrationTemplateClientCredentials,
     DynamicFormOptionsDataSource,
     StaticFormOptionsDataSource,
 )
@@ -78,7 +79,7 @@ class ZohoCrmPlugin(OmnataPlugin):
         """
         return [
             ConnectionMethod(
-                name="OAuth",
+                name="OAuth (Server based)",
                 fields=[
                     FormDropdownField(name='data_center_domain',label='Data Center',
                     required=True,
@@ -115,6 +116,47 @@ class ZohoCrmPlugin(OmnataPlugin):
                                           "ZohoFiles.files.ALL",
                                           "ZohoCRM.modules.ALL"],
                 ),
+            ),
+            ConnectionMethod(
+                name="OAuth (Self client)",
+                fields=[
+                    FormInputField(name='client_id',label='Client ID',required=True),
+                    FormInputField(name='client_secret',label='Client Secret',required=True,secret=True),
+                    FormInputField(name='initial_code',label='Initial code',required=True,secret=True,help_text="This is a temporary initial code, generated in the 'self client' application"),
+                    FormDropdownField(name='data_center_domain',label='Data Center',
+                    required=True,
+                    data_source=StaticFormOptionsDataSource(values=[
+                        FormOption(value='www.zohoapis.com',label='USA',default=True),
+                        FormOption(value='www.zohoapis.com.au',label='Australia'),
+                        FormOption(value='www.zohoapis.eu',label='Europe'),
+                        FormOption(value='www.zohoapis.in',label='India'),
+                        FormOption(value='www.zohoapis.com.cn',label='China'),
+                        FormOption(value='www.zohoapis.jp',label='Japan')
+                    ])),
+                    FormDropdownField(name='product_edition',label='Product Edition',
+                    help_text="Used to calculate rate limit quota",
+                    required=True,
+                    data_source=StaticFormOptionsDataSource(values=[
+                        FormOption(value='free',label='Free Edition',default=True),
+                        FormOption(value='standard_starter',label='Standard/Starter Edition'),
+                        FormOption(value='professional',label='Professional'),
+                        FormOption(value='enterprise',label='Enterprise/Zoho One'),
+                        FormOption(value='ultimate',label='Ultimate/CRM Plus'),
+                    ])),
+                FormInputField(name='user_count',label='Purchased Users Count',default_value="100",help_text="Used to calculate rate limit quota",required=True),
+                FormInputField(name='addon_credits',label='Addon API credits purchased',default_value="0",help_text="Used to calculate rate limit quota",required=True)
+                ]#,
+                #oauth_template=SecurityIntegrationTemplateClientCredentials(
+                #    oauth_client_id="<Client ID>",
+                #    oauth_client_secret="<Client Secret>",
+                #    oauth_token_endpoint="https://<Account domain (e.g. accounts.zoho.com)>/oauth/v2/token",
+                #    oauth_allowed_scopes=["ZohoCRM.bulk.ALL",
+                #                          "ZohoCRM.settings.modules.READ",
+                #                          "ZohoCRM.settings.fields.READ",
+                #                          "ZohoCRM.org.READ",
+                #                          "ZohoFiles.files.ALL",
+                #                          "ZohoCRM.modules.ALL"],
+                #),
             )
         ]
 
@@ -124,28 +166,103 @@ class ZohoCrmPlugin(OmnataPlugin):
         The user will be instructed to create a network rule to allow the plugin to connect to these addresses.
         """
         data_center_domain=parameters.get_connection_parameter('data_center_domain').value
-        return [data_center_domain,
-                data_center_domain.replace('www','content'),
-                data_center_domain.replace('www','download').replace('.zohoapis.','.zoho.')]
+        domains = [data_center_domain,
+                self.content_domain(parameters),
+                self.download_domain(parameters)]
+        if parameters.connection_method=='OAuth (Self client)':
+            domains.append(self.accounts_domain(parameters))
+        return domains
+    
+    def content_domain(self, parameters: ConnectionConfigurationParameters) -> str:
+        """
+        Returns the domain that the plugin will download content from.
+        """
+        data_center_domain=parameters.get_connection_parameter('data_center_domain').value
+        return data_center_domain.replace('www','content')
+    
+    def download_domain(self, parameters: ConnectionConfigurationParameters) -> str:
+        """
+        Returns the domain that the plugin will download files from.
+        """
+        data_center_domain=parameters.get_connection_parameter('data_center_domain').value
+        return data_center_domain.replace('www','download').replace('.zohoapis.','.zoho.')
+
+    def accounts_domain(self, parameters: ConnectionConfigurationParameters) -> str:
+        """
+        Returns the domain that the plugin will retrieve access tokens from.
+        """
+        data_center_domain=parameters.get_connection_parameter('data_center_domain').value
+        return data_center_domain.replace('www','accounts').replace('.zohoapis.','.zoho.')
 
     def connect(self, parameters: ConnectionConfigurationParameters) -> ConnectResponse:
         """
         Tests the connection to Zoho CRM, using the provided parameters
         """
-        (base_url,headers) = self.get_auth_details(parameters)
+        if parameters.connection_method=='OAuth (Self client)':
+            # if we're using the self client method, we need to exchange the initial code for an access token
+            accounts_domain = self.accounts_domain(parameters)
+            oauth_token_endpoint = f"https://{accounts_domain}/oauth/v2/token"
+            oauth_client_id = parameters.get_connection_parameter('client_id').value
+            oauth_client_secret = parameters.get_connection_secret('client_secret').value
+            initial_code = parameters.get_connection_secret('initial_code').value
+            oauth_response = requests.post(oauth_token_endpoint,data={
+                'code': initial_code,
+                'client_id': oauth_client_id,
+                'client_secret': oauth_client_secret,
+                'redirect_uri': 'https://www.omnata.com',
+                'grant_type': 'authorization_code'
+            })
+            if oauth_response.status_code!=200:
+                raise ValueError(f"Error {oauth_response.status_code} exchanging initial code for access token: {oauth_response.text}")
+            if 'access_token' not in oauth_response.json():
+                raise ValueError(f"Error exchanging initial code for access token: {oauth_response.text}")
+            oauth_response_json = oauth_response.json()
+            access_token = oauth_response_json['access_token']
+            refresh_token = oauth_response_json['refresh_token']
+            data_center_domain = parameters.get_connection_parameter('data_center_domain').value
+            base_url = f"https://{data_center_domain}"
+            headers = {
+                "Authorization": f"Zoho-oauthtoken {access_token}"
+            }
+            connection_secrets = {
+                "refresh_token": StoredConfigurationValue(value=refresh_token)
+            }
+        else:
+            (base_url,headers) = self.get_auth_details(parameters)
+            connection_secrets = {}
         response = requests.get(f"{base_url}/crm/v5/org",headers=headers)
         if response.status_code != 200:
             raise ValueError(f"Error connecting to Zoho CRM: {response.text}")
-        return ConnectResponse(connection_parameters={
-            "org_id": StoredConfigurationValue(value=response.json()['org'][0]['zgid'])
-        })
+        return ConnectResponse(
+            connection_parameters={
+                "org_id": StoredConfigurationValue(value=response.json()['org'][0]['zgid'])
+            },
+            connection_secrets=connection_secrets)
 
     def get_auth_details(self, parameters: ConnectionConfigurationParameters) -> Tuple[str,Dict]:
         """
         Returns a tuple containing the API base url and the header dict to include in requests
         """
+        if "refresh_token" in parameters.connection_secrets:
+            # if we have a refresh token, we can use the OAuth client credentials flow to get an access token
+            accounts_domain = self.accounts_domain(parameters)
+            oauth_token_endpoint = f"https://{accounts_domain}/oauth/v2/token"
+            oauth_client_id = parameters.get_connection_parameter('client_id').value
+            oauth_client_secret = parameters.get_connection_secret('client_secret').value
+            refresh_token = parameters.get_connection_secret('refresh_token').value
+            oauth_response = requests.post(oauth_token_endpoint,data={
+                'refresh_token': refresh_token,
+                'client_id': oauth_client_id,
+                'client_secret': oauth_client_secret,
+                'grant_type': 'refresh_token'
+            })
+            if oauth_response.status_code!=200:
+                raise ValueError(f"Error {oauth_response.status_code} refreshing access token: {oauth_response.text}")
+            oauth_response_json = oauth_response.json()
+            access_token = oauth_response_json['access_token']
+        else:
+            access_token=parameters.get_connection_secret('access_token').value
         data_center_domain=parameters.get_connection_parameter('data_center_domain').value
-        access_token=parameters.get_connection_secret('access_token').value
         return (f"https://{data_center_domain}",{
                 "Authorization": f"Zoho-oauthtoken {access_token}"
             })
@@ -163,12 +280,12 @@ class ZohoCrmPlugin(OmnataPlugin):
         return [
             ApiLimits(
                 endpoint_category="Bulk Write Initialize",
-                request_matchers=[HttpRequestMatcher(http_methods=["POST"],url_regex="/crm/bulk/v\d/write")],
+                request_matchers=[HttpRequestMatcher(http_methods=["POST"],url_regex="/crm/bulk/v\d/write$")],
                 request_rates=[RequestRateLimit(request_count=api_credits / 500, time_unit="day", unit_count=1)],
             ),
             ApiLimits(
                 endpoint_category="Bulk Read Initialize",
-                request_matchers=[HttpRequestMatcher(http_methods=["POST"],url_regex="/crm/bulk/v\d/read")],
+                request_matchers=[HttpRequestMatcher(http_methods=["POST"],url_regex="/crm/bulk/v\d/read$")],
                 request_rates=[RequestRateLimit(request_count=api_credits / 50, time_unit="day", unit_count=1)],
             )
             ,
@@ -409,7 +526,7 @@ class ZohoCrmPlugin(OmnataPlugin):
         return [
             StreamConfiguration(
                 stream_name=m['module_name'],
-                supported_sync_strategies=[InboundSyncStrategy.FULL_REFRESH],
+                supported_sync_strategies=[InboundSyncStrategy.FULL_REFRESH,InboundSyncStrategy.INCREMENTAL],
                 source_defined_cursor=True,
                 default_cursor_field="Modified_Time",
                 source_defined_primary_key="Id",
@@ -457,6 +574,17 @@ class ZohoCrmPlugin(OmnataPlugin):
                 }
             }
         }
+        if stream.sync_strategy == InboundSyncStrategy.INCREMENTAL:
+            if stream.latest_state is not None and 'max_modified_time' in stream.latest_state:
+                max_modified_time = stream.latest_state['max_modified_time']
+                # if we're doing an incremental sync, we need to pass the last modified time as a filter
+                bulk_import_request['query']['criteria'] = {
+                    "field": {
+                        "api_name":"Modified_Time"
+                    },
+                    "comparator": "greater_than",
+                    "value": max_modified_time
+                }
         export_response = requests.post(f"{base_url}/crm/bulk/v5/read",headers=headers,json=bulk_import_request,hooks={'response':too_many_requests_hook()})
         if export_response.status_code!=201:
             raise ValueError(f"Error {export_response.status_code} creating bulk read job: {export_response.text}")
@@ -491,7 +619,13 @@ class ZohoCrmPlugin(OmnataPlugin):
                 reader = csv.DictReader(io.StringIO(file_in_zip.read().decode('utf-8')))
                 # convert to a list of dicts by iterating over the DictReader
                 list_of_dicts = list(reader)
+                if len(list_of_dicts)==0:
+                    logger.info(f"No records found for stream {stream.stream.stream_name}")
+                    return
+                # get all the System_Modified_Time values
+                modified_times = [x['Modified_Time'] for x in list_of_dicts]
+                max_modified_time = max(modified_times)
                 # get the dict with the maximum "Modified_Time" value
-                max_modified_time = max(list_of_dicts,key=lambda x:x['Modified_Time'])
+                #max_modified_time = max(list_of_dicts,key=lambda x:x['Modified_Time'])
                 inbound_sync_request.enqueue_results(stream.stream.stream_name, list_of_dicts, {'max_modified_time': max_modified_time})
 
