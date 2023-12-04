@@ -501,6 +501,10 @@ class ZohoCrmPlugin(OmnataPlugin):
                 logger.info(f"Retrieved {len(results_df)} results from import job")
                 # the CSV that comes back from Zoho has the same records in the same order,
                 # so we can concatenate the dataframes sideways to match them
+                if len(results_df)!=len(data_frame):
+                    raise ValueError(f"Number of results ({len(results_df)}) does not match number of records ({len(data_frame)})")
+                data_frame.index = range(len(data_frame))
+                results_df.index = range(len(results_df))
                 records_to_apply = pandas.concat([data_frame,results_df], axis=1)
         # consider each record a success if the status is ADDED or UPDATED
         records_to_apply['SUCCESS'] = False
