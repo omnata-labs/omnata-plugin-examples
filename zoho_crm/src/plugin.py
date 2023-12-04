@@ -419,7 +419,7 @@ class ZohoCrmPlugin(OmnataPlugin):
         
         # our plugin only supports insert, update and upsert so we should only ever be given Create and Update actions
         records = outbound_sync_request.get_records(batched=True,sync_actions=[CreateSyncAction(),UpdateSyncAction()])
-        self.record_upload(data_frame=records,base_url=base_url,headers=headers,org_id=org_id,
+        self.record_upload(records,base_url=base_url,headers=headers,org_id=org_id,
                            module_name=module_name,sync_strategy=parameters.sync_strategy,find_by=find_by)
 
     @managed_outbound_processing(concurrency=5, batch_size=25000)
